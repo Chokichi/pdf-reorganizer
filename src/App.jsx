@@ -275,7 +275,7 @@ export default function App() {
       <CssBaseline />
       <Container maxWidth="md" sx={{ py: 4 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h4">PDF Reorganizer</Typography>
+          <Typography variant="h4">Free2PDF</Typography>
           <Stack direction="row" alignItems="center" spacing={2}>
             <Typography variant="body2">Dark Mode</Typography>
             <Switch checked={darkMode} onChange={() => setDarkMode(!darkMode)} />
