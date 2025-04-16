@@ -5,6 +5,7 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragOverlay
@@ -108,7 +109,7 @@ function SortableItem({ id, page, scale, selected, onSelect }) {
       <Paper elevation={2} sx={{ p: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 10 }}>
           <Checkbox checked={selected} onChange={() => onSelect(id)} size="small" />
-          <IconButton {...attributes} {...listeners} size="small" sx={{ cursor: 'grab' }}>
+          <IconButton {...attributes} {...listeners} size="small" sx={{ cursor: 'grab', touchAction: 'none' }}>
             <DragIndicatorIcon fontSize="small" />
           </IconButton>
         </Box>
@@ -185,9 +186,11 @@ export default function App() {
   const { getRootProps, getInputProps } = useDropzone({ onDrop, accept: { 'application/pdf': [] } });
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(PointerSensor),
+    useSensor(TouchSensor, {
       activationConstraint: {
-        distance: 5
+        delay: 0,
+        tolerance: 0
       }
     })
   );
@@ -291,15 +294,21 @@ export default function App() {
 
         {view === 'reorder' && (
           <>
-            <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-              <Typography variant="body2">Thumbnail size:</Typography>
-              <IconButton onClick={() => setScale((s) => Math.max(0.3, s - 0.1))}><RemoveIcon /></IconButton>
-              <IconButton onClick={() => setScale((s) => Math.min(1.0, s + 0.1))}><AddIcon /></IconButton>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch" mb={2}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="body2">Thumbnail size:</Typography>
+                <IconButton onClick={() => setScale((s) => Math.max(0.3, s - 0.1))}><RemoveIcon /></IconButton>
+                <IconButton onClick={() => setScale((s) => Math.min(1.0, s + 0.1))}><AddIcon /></IconButton>
+              </Stack>
               <Button onClick={rotateSelected} disabled={selectedPages.length === 0} startIcon={<RotateRightIcon />}>
                 Rotate Selected
               </Button>
-              <Button onClick={deleteSelected} disabled={selectedPages.length === 0}>Delete Selected</Button>
-              <Button onClick={clearSelection} disabled={selectedPages.length === 0}>Clear Selection</Button>
+              <Button onClick={deleteSelected} disabled={selectedPages.length === 0}>
+                Delete Selected
+              </Button>
+              <Button onClick={clearSelection} disabled={selectedPages.length === 0}>
+                Clear Selection
+              </Button>
             </Stack>
 
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
