@@ -52,7 +52,7 @@ function PDFThumbnail({ page, scale }) {
         const pdf = await loadingTask.promise;
         const pdfPage = await pdf.getPage(page.pageIndex + 1);
         const pageRotation = page.rotation || pdfPage.rotate;
-        const viewport = pdfPage.getViewport({ scale: 0.3, rotation: pageRotation });
+        const viewport = pdfPage.getViewport({ scale, rotation: page.rotation || pdfPage.rotate });
         
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
@@ -70,9 +70,18 @@ function PDFThumbnail({ page, scale }) {
       }
     };
     renderThumbnail();
-  }, [page.preview, page.pageIndex, page.rotation]);
+  }, [page.preview, page.pageIndex, page.rotation, scale]);
 
-  return <Box ref={containerRef} sx={{ width: '100%', transition: 'transform 0.3s ease' }} />;
+  return (
+    <Box
+      ref={containerRef}
+      sx={{
+        display: 'inline-block',
+        transition: 'transform 0.3s ease',
+        overflow: 'hidden'
+      }}
+    />
+  );
 }
 
 
