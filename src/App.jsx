@@ -227,11 +227,15 @@ export default function App() {
   };
 
   const activeDraggedPages = pdfPages.filter((p) => selectedPages.includes(p.id));
+
   const mergeAndDownload = async () => {
     try {
       const mergedPdf = await PDFDocument.create();
       const loadedPdfs = new Map();
-  
+
+      const MAX_WIDTH = 612; // 8.5 in
+      const MAX_HEIGHT = 792; // 11 in
+
       for (const page of pdfPages) {
         let srcPdf = loadedPdfs.get(page.file.name);
         if (!srcPdf) {
@@ -239,33 +243,37 @@ export default function App() {
           srcPdf = await PDFDocument.load(buffer);
           loadedPdfs.set(page.file.name, srcPdf);
         }
-  
+
+        const srcPage = srcPdf.getPage(page.pageIndex);
+        const { width: w, height: h } = srcPage.getSize();
+
+        const scale = optimizeCanvas
+          ? Math.min(MAX_WIDTH / w, MAX_HEIGHT / h, 1)
+          : 1;
+
+        if (scale < 1) {
+          const newWidth = w * scale;
+          const newHeight = h * scale;
+          const newPage = mergedPdf.addPage([newWidth, newHeight]);
+
+          const embeddedPage = await mergedPdf.embedPage(srcPage);
+          newPage.drawPage(embeddedPage, {
+            x: 0,
+            y: 0,
+            xScale: scale,
+            yScale: scale,
+          });
+
+          continue; // skip adding unscaled copy
+        }
+
         const [copiedPage] = await mergedPdf.copyPages(srcPdf, [page.pageIndex]);
-  
         if (page.rotation) {
           copiedPage.setRotation(degrees(page.rotation));
         }
-  
-        if (optimizeCanvas) {
-          const w = copiedPage.getWidth();
-          const h = copiedPage.getHeight();
-          const portrait = { width: 612, height: 792 };
-          const landscape = { width: 792, height: 612 };
-          const within20 = (a, b) => Math.abs(a - b) / b <= 0.2;
-  
-          if (!(within20(w, portrait.width) && within20(h, portrait.height)) &&
-              !(within20(w, landscape.width) && within20(h, landscape.height))) {
-            if (w > h) {
-              copiedPage.setMediaBox(0, 0, landscape.width, landscape.height);
-            } else {
-              copiedPage.setMediaBox(0, 0, portrait.width, portrait.height);
-            }
-          }
-        }
-  
         mergedPdf.addPage(copiedPage);
       }
-  
+
       const pdfBytes = await mergedPdf.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
