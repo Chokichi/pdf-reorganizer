@@ -53,7 +53,7 @@ function PDFThumbnail({ page, scale }) {
         const pdfPage = await pdf.getPage(page.pageIndex + 1);
         const pageRotation = page.rotation || pdfPage.rotate;
         const viewport = pdfPage.getViewport({ scale, rotation: page.rotation || pdfPage.rotate });
-        
+
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
         canvas.width = viewport.width;
@@ -137,6 +137,7 @@ export default function App() {
   const [scale, setScale] = useState(0.5);
   const [darkMode, setDarkMode] = useState(true);
   const [optimizeCanvas, setOptimizeCanvas] = useState(true);
+  const [flattenPages, setFlattenPages] = useState(false);
   const [selectedPages, setSelectedPages] = useState([]);
   const [activeId, setActiveId] = useState(null);
 
@@ -157,7 +158,7 @@ export default function App() {
       return newPages;
     });
   };
-      const rotateSelected = () => {
+  const rotateSelected = () => {
     setPdfPages((pages) =>
       pages.map((p) =>
         selectedPages.includes(p.id)
@@ -228,6 +229,10 @@ export default function App() {
 
   const activeDraggedPages = pdfPages.filter((p) => selectedPages.includes(p.id));
 
+
+  // App.jsx
+  // ... [imports remain unchanged]
+
   const mergeAndDownload = async () => {
     try {
       const mergedPdf = await PDFDocument.create();
@@ -242,10 +247,75 @@ export default function App() {
           const buffer = await page.file.arrayBuffer();
           srcPdf = await PDFDocument.load(buffer);
           loadedPdfs.set(page.file.name, srcPdf);
+
+          // 🧪 Log annotations on load
+          console.log(`📄 Inspecting PDF: ${page.file.name}`);
+          const pageCount = srcPdf.getPageCount();
+          for (let i = 0; i < pageCount; i++) {
+            const inspectPage = srcPdf.getPage(i);
+            const annots = inspectPage.node.lookupMaybe('Annots');
+            if (annots?.array) {
+              console.log(`🧪 Page ${i + 1} has ${annots.size()} annotation(s):`);
+              annots.asArray().forEach((annotRef, idx) => {
+                const annot = srcPdf.context.lookup(annotRef);
+                const subtype = annot.lookupMaybe('Subtype');
+                const action = annot.lookupMaybe('A');
+                const actionType = action?.lookupMaybe('S');
+                const uri = action?.lookupMaybe('URI');
+                console.log(`  Annotation ${idx + 1}:`, {
+                  subtype: subtype?.name,
+                  actionType: actionType?.name,
+                  uri: uri?.value,
+                });
+              });
+            }
+          }
         }
 
         const srcPage = srcPdf.getPage(page.pageIndex);
         const { width: w, height: h } = srcPage.getSize();
+
+        if (flattenPages) {
+          const canvas = document.createElement('canvas');
+          const viewportScale = 2;
+          const scale = viewportScale;
+          canvas.width = w * scale;
+          canvas.height = h * scale;
+          const ctx = canvas.getContext('2d');
+
+          const renderTask = await pdfjsLib.getDocument({ data: await page.file.arrayBuffer() }).promise
+            .then(doc => doc.getPage(page.pageIndex + 1))
+            .then(pdfPage => pdfPage.render({ canvasContext: ctx, viewport: pdfPage.getViewport({ scale }) }).promise);
+
+          const imgData = canvas.toDataURL('image/png');
+          const embeddedImage = await mergedPdf.embedPng(imgData);
+
+          const newPage = mergedPdf.addPage([w, h]);
+          newPage.drawImage(embeddedImage, {
+            x: 0,
+            y: 0,
+            width: w,
+            height: h,
+          });
+          continue;
+        }
+
+        // 🧽 Remove link annotations
+        const annotations = srcPage.node.lookupMaybe('Annots');
+        if (annotations?.array) {
+          const cleaned = annotations.asArray().filter((annotRef) => {
+            const annot = srcPdf.context.lookup(annotRef);
+            const subtype = annot.lookupMaybe('Subtype');
+            const action = annot.lookupMaybe('A');
+            const actionType = action?.lookupMaybe('S');
+            return subtype?.name !== 'Link' && actionType?.name !== 'URI';
+          });
+          if (cleaned.length > 0) {
+            srcPage.node.set('Annots', srcPdf.context.obj(cleaned));
+          } else {
+            srcPage.node.delete('Annots');
+          }
+        }
 
         const scale = optimizeCanvas
           ? Math.min(MAX_WIDTH / w, MAX_HEIGHT / h, 1)
@@ -286,7 +356,7 @@ export default function App() {
       console.error('Merge failed:', err);
     }
   };
-  
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -361,6 +431,10 @@ export default function App() {
               <FormControlLabel
                 control={<Switch checked={optimizeCanvas} onChange={() => setOptimizeCanvas(!optimizeCanvas)} />}
                 label="Optimize for Canvas"
+              />
+              <FormControlLabel
+                control={<Switch checked={flattenPages} onChange={() => setFlattenPages(!flattenPages)} />}
+                label="Strip links (Worse quality)"
               />
               <Button variant="outlined" onClick={() => setView('upload')}>Add More PDFs</Button>
               <Button variant="contained" color="primary" onClick={mergeAndDownload}>Merge & Download</Button>
