@@ -37,6 +37,8 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import Tooltip from '@mui/material/Tooltip';
+import { useMediaQuery } from '@mui/material';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
@@ -142,6 +144,7 @@ export default function App() {
   const [activeId, setActiveId] = useState(null);
 
   const theme = createTheme({ palette: { mode: darkMode ? 'dark' : 'light' } });
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const toggleSelection = (id) => {
     setSelectedPages((prev) =>
@@ -300,22 +303,6 @@ export default function App() {
           continue;
         }
 
-        // 🧽 Remove link annotations
-        const annotations = srcPage.node.lookupMaybe('Annots');
-        if (annotations?.array) {
-          const cleaned = annotations.asArray().filter((annotRef) => {
-            const annot = srcPdf.context.lookup(annotRef);
-            const subtype = annot.lookupMaybe('Subtype');
-            const action = annot.lookupMaybe('A');
-            const actionType = action?.lookupMaybe('S');
-            return subtype?.name !== 'Link' && actionType?.name !== 'URI';
-          });
-          if (cleaned.length > 0) {
-            srcPage.node.set('Annots', srcPdf.context.obj(cleaned));
-          } else {
-            srcPage.node.delete('Annots');
-          }
-        }
 
         const scale = optimizeCanvas
           ? Math.min(MAX_WIDTH / w, MAX_HEIGHT / h, 1)
@@ -428,14 +415,28 @@ export default function App() {
               </DragOverlay>            </DndContext>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mt={3} alignItems="center">
-              <FormControlLabel
-                control={<Switch checked={optimizeCanvas} onChange={() => setOptimizeCanvas(!optimizeCanvas)} />}
-                label="Optimize for Canvas"
-              />
-              <FormControlLabel
-                control={<Switch checked={flattenPages} onChange={() => setFlattenPages(!flattenPages)} />}
-                label="Strip links (Worse quality)"
-              />
+              <Tooltip title="Resize pages to standard dimensions (8.5 x 11 in). Highly recommended to keep this on." disableHoverListener={isMobile}>
+                <FormControlLabel
+                  control={<Switch checked={optimizeCanvas} onChange={() => setOptimizeCanvas(!optimizeCanvas)} />}
+                  label="Optimize for Canvas"
+                />
+              </Tooltip>
+              {isMobile && (
+                <Typography variant="caption" color="textSecondary" sx={{ maxWidth: 250 }}>
+                  Resize pages to standard dimensions (8.5 x 11 in). Highly recommended to keep this on.
+                </Typography>
+              )}
+              <Tooltip title="Render each page as an image to remove interactive links. May reduce quality and remove annotations. Use this if your writing disappears after merging." disableHoverListener={isMobile}>
+                <FormControlLabel
+                  control={<Switch checked={flattenPages} onChange={() => setFlattenPages(!flattenPages)} />}
+                  label="Strip links and flatten"
+                />
+              </Tooltip>
+              {isMobile && (
+                <Typography variant="caption" color="textSecondary" sx={{ maxWidth: 250 }}>
+                  Render each page as an image to remove interactive links. May reduce quality and remove annotations.
+                </Typography>
+              )}
               <Button variant="outlined" onClick={() => setView('upload')}>Add More PDFs</Button>
               <Button variant="contained" color="primary" onClick={mergeAndDownload}>Merge & Download</Button>
             </Stack>
