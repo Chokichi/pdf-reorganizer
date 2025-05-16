@@ -38,7 +38,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Tooltip from '@mui/material/Tooltip';
-import { useMediaQuery } from '@mui/material';
+import { useMediaQuery, useTheme } from '@mui/material';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
@@ -101,7 +101,7 @@ function DragPreviewGroup({ pages, scale }) {
   );
 }
 
-function SortableItem({ id, page, scale, selected, onSelect }) {
+function SortableItem({ id, page, scale, containerWidth, selected, onSelect }) {
   const {
     attributes,
     listeners,
@@ -110,21 +110,49 @@ function SortableItem({ id, page, scale, selected, onSelect }) {
     transition
   } = useSortable({ id });
 
+  const theme = useTheme();
+  const thumbnailsPerRow = containerWidth < 600 ? 2 : 3;
+  const availableWidth = containerWidth - ((thumbnailsPerRow - 1) * parseFloat(theme.spacing(2)) + 2);
+  const targetWidth = availableWidth / thumbnailsPerRow;
+
+  console.log(thumbnailsPerRow)
+  console.log(containerWidth)
+  console.log(availableWidth)
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition
   };
 
+  const standardWidth = 612;
+  const baseScale = Math.min(1, targetWidth / standardWidth);
+  const normalizedScale = standardWidth / page.width;
+  const effectiveScale = baseScale * normalizedScale * scale;
+
   return (
     <Grid ref={setNodeRef} style={style} sx={{ gridColumn: 'span 2' }}>
-      <Paper elevation={2} sx={{ p: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 10 }}>
+      <Paper elevation={3} sx={{
+         py: 0, 
+         px: 0,
+         flexDirection: 'column',
+         display: 'flex', 
+         alignItems: 'center'
+         }}>
+        <Box sx={{ 
+          display: 'flex', 
+          width: '100%',
+          alignItems: 'center', 
+          mb: 0,
+          px: 2,
+          py: 0,
+          justifyContent: 'space-between'
+          }}>
           <Checkbox checked={selected} onChange={() => onSelect(id)} size="small" />
           <IconButton {...attributes} {...listeners} size="small" sx={{ cursor: 'grab', touchAction: 'none' }}>
             <DragIndicatorIcon fontSize="small" />
           </IconButton>
         </Box>
-        <PDFThumbnail page={page} scale={scale} />
+        <PDFThumbnail page={page} scale={effectiveScale} />
         <Typography variant="caption" noWrap>
           {page.file.name} — Pg {page.pageIndex + 1}
         </Typography>
@@ -136,12 +164,27 @@ function SortableItem({ id, page, scale, selected, onSelect }) {
 export default function App() {
   const [pdfPages, setPdfPages] = useState([]);
   const [view, setView] = useState('upload');
-  const [scale, setScale] = useState(0.5);
+  const [scale, setScale] = useState(1.0);
   const [darkMode, setDarkMode] = useState(true);
   const [optimizeCanvas, setOptimizeCanvas] = useState(true);
   const [flattenPages, setFlattenPages] = useState(false);
   const [selectedPages, setSelectedPages] = useState([]);
   const [activeId, setActiveId] = useState(null);
+
+  const containerRef = useRef(null);
+  const [containerWidth, setContainerWidth] = useState(window.innerWidth);
+
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => {
+      setContainerWidth(entry.contentRect.width);
+    });
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    };
+
+    return () => observer.disconnect();
+  }, []);
 
   const theme = createTheme({ palette: { mode: darkMode ? 'dark' : 'light' } });
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -181,13 +224,23 @@ export default function App() {
       const previewURL = URL.createObjectURL(file);
 
       for (let i = 0; i < pageCount; i++) {
+        const pdfPage = await pdf.getPage(i + 1);
+        const viewport = pdfPage.getViewport({ scale: 1 });
+        const width = viewport.width;
+        const height = viewport.height;
+
+        console.log(`Page ${i + 1} of ${file.name}: width = ${width}, height = ${height}`);
+
+
         newPages.push({
           id: `${file.name}-page-${i}-${Date.now()}`,
           file,
           fileName: file.name,
           pageIndex: i,
           preview: previewURL,
-          rotation: 0
+          rotation: 0,
+          width,
+          height
         });
       }
     }
@@ -232,9 +285,6 @@ export default function App() {
 
   const activeDraggedPages = pdfPages.filter((p) => selectedPages.includes(p.id));
 
-
-  // App.jsx
-  // ... [imports remain unchanged]
 
   const mergeAndDownload = async () => {
     try {
@@ -347,7 +397,7 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Container maxWidth="md" sx={{ py: 4 }}>
+      <Container ref={containerRef} maxWidth="md" sx={{ py: 4 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
           <Typography variant="h4">Free2PDF</Typography>
           <Stack direction="row" alignItems="center" spacing={2}>
@@ -371,8 +421,11 @@ export default function App() {
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch" mb={2}>
               <Stack direction="row" spacing={1} alignItems="center">
                 <Typography variant="body2">Thumbnail size:</Typography>
-                <IconButton onClick={() => setScale((s) => Math.max(0.3, s - 0.1))}><RemoveIcon /></IconButton>
-                <IconButton onClick={() => setScale((s) => Math.min(1.0, s + 0.1))}><AddIcon /></IconButton>
+                <IconButton onClick={() => setScale((s) => Math.max(0.1, s - 0.1))}><RemoveIcon /></IconButton>
+                <IconButton onClick={() => setScale((s) => Math.min(3.0, s + 0.1))}><AddIcon /></IconButton>
+                <Button variant="outlined" size="small" onClick={() => setScale(1.0)} disabled={scale === 1.0}>
+                  Reset Size
+                </Button>
               </Stack>
               <Button onClick={rotateSelected} disabled={selectedPages.length === 0} startIcon={<RotateRightIcon />}>
                 Rotate Selected
@@ -387,7 +440,7 @@ export default function App() {
 
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
               <SortableContext items={pdfPages.map(page => page.id)} strategy={rectSortingStrategy}>
-                <Grid container spacing={2} columns={{ xs: 4, sm: 8, md: 12 }}>
+                <Grid container spacing={2} columns={{ xs: 4, sm: 8, md: 12 }} justifyContent={"left"}>
                   {pdfPages.map((page) => {
                     const isBeingDragged =
                       activeId &&
@@ -403,6 +456,7 @@ export default function App() {
                         scale={scale}
                         selected={selectedPages.includes(page.id)}
                         onSelect={toggleSelection}
+                        containerWidth={containerWidth}
                       />
                     );
                   })}
